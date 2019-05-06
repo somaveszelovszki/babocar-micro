@@ -68,9 +68,9 @@ volatile uint32_t rc_recv_in_speed = 1500;
 TIM_HandleTypeDef * const tim_speedControllerPeriod = &htim17;
 volatile uint8_t speedCtrlPeriodElapsed = 0;
 
-const uint32_t PI_CONTROLLER_PERIOD_US = 500;
-const uint32_t PI_CONTROLLER_Ti_us     = 500;
-const float    PI_CONTROLLER_Kc        = 0;	// TODO
+const uint32_t PI_CONTROLLER_PERIOD_US = 500;   // TODO
+const uint32_t PI_CONTROLLER_Ti_us     = 500;   // TODO
+const float    PI_CONTROLLER_Kc        = 0;	    // TODO
 const float    PI_CONTROLLER_OUT_MIN   = -1.0f;
 const float    PI_CONTROLLER_OUT_MAX   = 1.0f;
 
@@ -78,6 +78,7 @@ const float    PI_CONTROLLER_OUT_MAX   = 1.0f;
 TIM_HandleTypeDef * const tim_encoder = &htim3;
 const int32_t ENCODER_MAX_VALUE  = 65536;
 const float ENCODER_TO_MPS_RATIO = 1.0f; // TODO
+const uint32_t MAX_CMD_DELAY_MS  = 50;      // If no command is received for this amount of time, motor needs to be stopped.
 
 // UART parameters
 UART_HandleTypeDef * const uart_cmd = &huart1;
@@ -135,7 +136,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   uint8_t useSafetyEnableSignal = 0;
-  uint8_t rxBuffer[4];
+  uint8_t rxBuffer[4], txBuffer[4];
   HAL_UART_Receive_DMA(uart_cmd, rxBuffer, 1);
 
   dc_motor_initialize();
@@ -163,6 +164,7 @@ int main(void)
   HAL_UART_DMAStop(uart_cmd);
   HAL_UART_Receive_DMA(uart_cmd, rxBuffer, 4);
 
+  uint32_t lastCmdTime = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -172,6 +174,11 @@ int main(void)
       if (newCmd) {
           newCmd = 0;
           speedCtrl.desired = *(float*)rxBuffer;
+          lastCmdTime = HAL_GetTick();
+      }
+
+      if (HAL_GetTick() - lastCmdTime > MAX_CMD_DELAY_MS) {
+          speedCtrl.desired = 0.0f;
       }
 
       if (speedCtrlPeriodElapsed) {
@@ -181,6 +188,10 @@ int main(void)
     	  const float speed_measured = diff * ENCODER_TO_MPS_RATIO;
     	  pi_controller_update(&speedCtrl, speed_measured);
     	  dc_motor_write(speedCtrl.output, useSafetyEnableSignal);
+
+          // transmits actual (measured) speed back to main panel
+          *(float*)txBuffer = speed_measured;
+          HAL_UART_Transmit_DMA(uart_cmd, txBuffer, 4);
       }
 
   /* USER CODE END WHILE */

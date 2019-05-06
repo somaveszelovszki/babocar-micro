@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-int32_t round(float value);
+int32_t round_to_int(float value);
 
 int32_t clamp(int32_t value, int32_t min_val, int32_t max_val);
 
