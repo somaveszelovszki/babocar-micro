@@ -135,9 +135,11 @@ int main(void)
   MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
 
+  static const uint8_t ACK[4] = { 0, 0, 0, 0 };
+
   uint8_t useSafetyEnableSignal = 0;
   uint8_t rxBuffer[4], txBuffer[4];
-  HAL_UART_Receive_DMA(uart_cmd, rxBuffer, 1);
+  HAL_UART_Receive_DMA(uart_cmd, rxBuffer, 2);
 
   dc_motor_initialize();
 
@@ -162,6 +164,7 @@ int main(void)
 
   // restarts UART to receive 4 bytes (floating point speed)
   HAL_UART_DMAStop(uart_cmd);
+  HAL_UART_Transmit(uart_cmd, ACK, 4, 10);
   HAL_UART_Receive_DMA(uart_cmd, rxBuffer, 4);
 
   uint32_t lastCmdTime = HAL_GetTick();
