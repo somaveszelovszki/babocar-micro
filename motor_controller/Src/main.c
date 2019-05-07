@@ -44,6 +44,7 @@
 #include "gpio.h"
 
 /* USER CODE BEGIN Includes */
+#include "config.h"
 #include "pi_controller.h"
 #include "encoder.h"
 #include "dc_motor.h"
@@ -54,35 +55,23 @@
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 
-// DC motor parameters
-TIM_HandleTypeDef * const tim_motor = &htim1;
-const uint32_t chnl_fwd = 1;
-const uint32_t chnl_bwd = 2;
+TIM_HandleTypeDef  * const tim_motor                 = &htim1;
+TIM_HandleTypeDef  * const tim_encoder               = &htim3;
+TIM_HandleTypeDef  * const tim_rc_recv               = &htim14;
+TIM_HandleTypeDef  * const tim_speedControllerPeriod = &htim17;
+UART_HandleTypeDef * const uart_cmd                  = &huart1;
 
-// RC controller parameters
-TIM_HandleTypeDef * const tim_rc_recv = &htim14;
-const uint32_t chnl_rc_recv = 1;
-volatile uint32_t rc_recv_in_speed = 1500;
+const    uint32_t          chnl_fwd                  = 1;
+const    uint32_t          chnl_bwd                  = 2;
+const    uint32_t          chnl_rc_recv              = 1;
 
-// PI controller parameters
-TIM_HandleTypeDef * const tim_speedControllerPeriod = &htim17;
-volatile uint8_t speedCtrlPeriodElapsed = 0;
+volatile uint32_t          rc_recv_in_speed          = 1500;
+volatile uint8_t           newCmd                    = 0;
 
-const uint32_t PI_CONTROLLER_PERIOD_US = 500;   // TODO
-const uint32_t PI_CONTROLLER_Ti_us     = 500;   // TODO
-const float    PI_CONTROLLER_Kc        = 0;	    // TODO
-const float    PI_CONTROLLER_OUT_MIN   = -1.0f;
-const float    PI_CONTROLLER_OUT_MAX   = 1.0f;
-
-// Speed measurement parameters
-TIM_HandleTypeDef * const tim_encoder = &htim3;
-const int32_t ENCODER_MAX_VALUE  = 65536;
-const float ENCODER_TO_MPS_RATIO = 1.0f; // TODO
-const uint32_t MAX_CMD_DELAY_MS  = 50;      // If no command is received for this amount of time, motor needs to be stopped.
-
-// UART parameters
-UART_HandleTypeDef * const uart_cmd = &huart1;
-volatile uint8_t newCmd = 0;
+volatile pi_controller_t   speedCtrl;
+volatile encoder_t         encoder;
+volatile float             speed_measured_mps        = 0.0f;
+volatile uint8_t           useSafetyEnableSignal     = 1;
 
 /* USER CODE END PV */
 
@@ -91,6 +80,28 @@ void SystemClock_Config(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
+
+uint8_t is_motor_enabled() {
+    if (useSafetyEnableSignal) {
+        static const uint8_t ERROR_LIMIT = 3;
+        static uint8_t err_cntr = 0;
+
+        // copies received RC pwm atomically
+        const uint32_t primask = __get_PRIMASK();
+        __disable_irq();
+        int32_t recvPwm = (int32_t)rc_recv_in_speed;
+        if (primask) __enable_irq();
+
+        // after a given number of errors, stops motor
+        if ((recvPwm < 900 || recvPwm > 2100) && ++err_cntr >= ERROR_LIMIT) {
+            return 0;
+        }
+
+        return recvPwm >= 1700 ? 1 : 0;
+    }
+
+    return 1;
+}
 
 /* USER CODE END PFP */
 
@@ -135,65 +146,89 @@ int main(void)
   MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
 
-  static const uint8_t ACK[4] = { 0, 0, 0, 0 };
+  typedef enum {
+      Code_SAFETY_ENABLE_SIGNAL = 1,    // Defines if safety enable signal is enabled (1: enabled, 0: disabled)
+      Code_TARGET_SPEED         = 2,    // Sets target speed
+      Code_PI_CONTROLLER_Ti     = 3,    // Sets speed controller's Ti [us]
+      Code_PI_CONTROLLER_Kc     = 4     // Sets speed controller's Kc
+  } Code;
 
-  uint8_t useSafetyEnableSignal = 0;
-  uint8_t rxBuffer[4], txBuffer[4];
-  HAL_UART_Receive_DMA(uart_cmd, rxBuffer, 2);
+  uint8_t ACK_template[TX_SIZE] = { 0, 0, 0, 0, 0 };
+
+  uint8_t rxBuffer[RX_SIZE], txBuffer[TX_SIZE];
+  HAL_UART_Receive_DMA(uart_cmd, rxBuffer, RX_SIZE);
 
   dc_motor_initialize();
-
-  pi_controller_t speedCtrl;
-  pi_controller_initialize(&speedCtrl, PI_CONTROLLER_PERIOD_US, PI_CONTROLLER_Ti_us, PI_CONTROLLER_Kc, PI_CONTROLLER_OUT_MIN, PI_CONTROLLER_OUT_MAX);
-
-  encoder_t encoder;
-  encoder_initialize(&encoder, ENCODER_MAX_VALUE);
-
-  while(1) {
-      if (newCmd) {
-          newCmd = 0;
-          if (rxBuffer[0] == 'S') { // Start with safety signal
-              useSafetyEnableSignal = 1;
-              break;
-          } else if (rxBuffer[0] == 'R') {
-        	  useSafetyEnableSignal = 0;
-        	  break;
-          }
-      }
-  }
-
-  // restarts UART to receive 4 bytes (floating point speed)
-  HAL_UART_DMAStop(uart_cmd);
-  HAL_UART_Transmit(uart_cmd, ACK, 4, 10);
-  HAL_UART_Receive_DMA(uart_cmd, rxBuffer, 4);
+  encoder_initialize((encoder_t*)&encoder, ENCODER_MAX_VALUE);
+  pi_controller_initialize((pi_controller_t*)&speedCtrl, SPEED_CTRL_PERIOD_US, SPEED_CTRL_Ti_us, SPEED_CTRL_Kc, SPEED_CTRL_DEADBAND_MPS, -SPEED_CTRL_OUT_MAX, SPEED_CTRL_OUT_MAX);
 
   uint32_t lastCmdTime = HAL_GetTick();
+  uint32_t lastSpeedSendTime = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+      const uint32_t currentTime = HAL_GetTick();
       if (newCmd) {
           newCmd = 0;
-          speedCtrl.desired = *(float*)rxBuffer;
-          lastCmdTime = HAL_GetTick();
+          lastCmdTime = currentTime;
+
+          const Code code = (Code)rxBuffer[0];
+
+          switch (code) {
+
+          case Code_SAFETY_ENABLE_SIGNAL:
+              useSafetyEnableSignal = rxBuffer[1];
+              break;
+
+          case Code_TARGET_SPEED:
+          {
+              if (is_motor_enabled()) {
+                  __disable_irq();
+                  speedCtrl.desired = *(float*)(&rxBuffer[1]);
+                  __enable_irq();
+              } else {
+                  __disable_irq();
+                  speedCtrl.desired = 0.0f;
+                  __enable_irq();
+              }
+
+              break;
+          }
+
+          case Code_PI_CONTROLLER_Ti:
+              __disable_irq();
+              pi_controller_set_Ti((pi_controller_t*)&speedCtrl, *(uint32_t*)(&rxBuffer[1]));
+              __enable_irq();
+              break;
+
+          case Code_PI_CONTROLLER_Kc:
+              __disable_irq();
+              pi_controller_set_Ti((pi_controller_t*)&speedCtrl, *(float*)(&rxBuffer[1]));
+              __enable_irq();
+              break;
+          }
+
+          ACK_template[0] = (uint8_t)code;
+          HAL_UART_Transmit_DMA(uart_cmd, ACK_template, TX_SIZE);
       }
 
-      if (HAL_GetTick() - lastCmdTime > MAX_CMD_DELAY_MS) {
+      if (currentTime - lastCmdTime > MAX_CMD_DELAY_MS) {
+          __disable_irq();
           speedCtrl.desired = 0.0f;
+          __enable_irq();
       }
 
-      if (speedCtrlPeriodElapsed) {
-    	  speedCtrlPeriodElapsed = 0;
+      if (currentTime >= lastSpeedSendTime + SPEED_SEND_PERIOD_MS) {
+    	  lastSpeedSendTime = currentTime;
 
-    	  const int32_t diff = encoder_get_diff(&encoder);
-    	  const float speed_measured = diff * ENCODER_TO_MPS_RATIO;
-    	  pi_controller_update(&speedCtrl, speed_measured);
-    	  dc_motor_write(speedCtrl.output, useSafetyEnableSignal);
+    	  __disable_irq();
+    	  *(float*)txBuffer = speed_measured_mps;
+    	  __enable_irq();
 
           // transmits actual (measured) speed back to main panel
-          *(float*)txBuffer = speed_measured;
           HAL_UART_Transmit_DMA(uart_cmd, txBuffer, 4);
       }
 
@@ -282,7 +317,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == tim_speedControllerPeriod) {
-		speedCtrlPeriodElapsed = 1;
+		const int32_t diff = encoder_get_diff((encoder_t*)&encoder);
+		speed_measured_mps = diff * ENCODER_TO_MPS_RATIO;
+		pi_controller_update((pi_controller_t*)&speedCtrl, speed_measured_mps);
+		dc_motor_write(speedCtrl.output, useSafetyEnableSignal);
 	}
 }
 
