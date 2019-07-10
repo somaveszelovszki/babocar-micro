@@ -1,0 +1,3 @@
+[submodule "modules/micro-utils"]
+	path = modules/micro-utils
+	url = git@github.com:somaveszelovszki/micro-utils.git
