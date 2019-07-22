@@ -4,14 +4,18 @@
 #include "stm32f0xx_hal_tim.h"
 
 extern TIM_HandleTypeDef * const tim_motor;
-extern const uint32_t            chnl_fwd;
-extern const uint32_t            chnl_bwd;
+extern const uint32_t chnl_fwd_high;
+extern const uint32_t chnl_fwd_low;
+extern const uint32_t chnl_bwd_high;
+extern const uint32_t chnl_bwd_low;
 
 #define PWM_PERIOD (48 * 20)
 
+#define DEAD_TIME_TICK 2 // TODO
+
 #define chnl2_pwm(fwd_pwm) (PWM_PERIOD - fwd_pwm)
 
-#define PWM_FWD_MAX (PWM_PERIOD * 0.92f)
+#define PWM_FWD_MAX ((int)(PWM_PERIOD * 0.92f))
 #define PWM_BWD_MAX chnl2_pwm(PWM_FWD_MAX)
 
 void dc_motor_initialize() {
@@ -26,8 +30,8 @@ void dc_motor_write(float duty, uint8_t use_safety_enable_signal) {
     // sets motor pwm atomically
     const uint32_t primask = __get_PRIMASK();
     __disable_irq();
-    __HAL_TIM_SET_COMPARE(tim_motor, chnl_fwd, pwm1);
-    __HAL_TIM_SET_COMPARE(tim_motor, chnl_bwd, pwm2);
+    __HAL_TIM_SET_COMPARE(tim_motor, chnl_fwd_high, pwm1);
+    __HAL_TIM_SET_COMPARE(tim_motor, chnl_bwd_high, pwm2);
     if (primask) {
         __enable_irq();
     }
