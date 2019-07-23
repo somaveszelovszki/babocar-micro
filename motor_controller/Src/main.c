@@ -147,6 +147,15 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);
+
+  const uint32_t PWM_MAX = 48 * 20 - 1;
+
+  __HAL_TIM_SET_COMPARE(tim_motor, TIM_CHANNEL_2, PWM_MAX / 2);
+
+  while(1) {}
+
   typedef enum {
       Code_SAFETY_ENABLE_SIGNAL = 1,    // Defines if safety enable signal is enabled (1: enabled, 0: disabled)
       Code_TARGET_SPEED         = 2,    // Sets target speed
@@ -290,23 +299,23 @@ void SystemClock_Config(void)
 
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 	if (htim == tim_rc_recv) {
-		rc_recv_in_speed = __HAL_TIM_GET_COMPARE(tim_rc_recv, chnl_rc_recv);
-		__HAL_TIM_SET_COUNTER(tim_rc_recv, 0); 	//resets counter after input capture interrupt occurs
+//		rc_recv_in_speed = __HAL_TIM_GET_COMPARE(tim_rc_recv, chnl_rc_recv);
+//		__HAL_TIM_SET_COUNTER(tim_rc_recv, 0); 	//resets counter after input capture interrupt occurs
 	}
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart == uart_cmd) {
-        newCmd = 1;
+//        newCmd = 1;
     }
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == tim_speedControllerPeriod) {
-		const int32_t diff = encoder_get_diff((encoder_t*)&encoder);
-		speed_measured_mps = diff * ENCODER_TO_MPS_RATIO;
-		pi_controller_update((pi_controller_t*)&speedCtrl, speed_measured_mps);
-		dc_motor_write(speedCtrl.output, useSafetyEnableSignal);
+//		const int32_t diff = encoder_get_diff((encoder_t*)&encoder);
+//		speed_measured_mps = diff * ENCODER_TO_MPS_RATIO;
+//		pi_controller_update((pi_controller_t*)&speedCtrl, speed_measured_mps);
+//		dc_motor_write(speedCtrl.output, useSafetyEnableSignal);
 	}
 }
 
