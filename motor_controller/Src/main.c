@@ -59,11 +59,11 @@ TIM_HandleTypeDef  * const tim_rc_recv               = &htim14;
 TIM_HandleTypeDef  * const tim_speedControllerPeriod = &htim17;
 UART_HandleTypeDef * const uart_cmd                  = &huart1;
 
-const    uint32_t          chnl_fwd_high             = 0; // TODO 1, 2, 3, or 4
-const    uint32_t          chnl_fwd_low              = 0; // TODO 1, 2, 3, or 4
-const    uint32_t          chnl_bwd_high             = 0; // TODO 1, 2, 3, or 4
-const    uint32_t          chnl_bwd_low              = 0; // TODO 1, 2, 3, or 4
-const    uint32_t          chnl_rc_recv              = 1;
+const    uint16_t          chnl_fwd_high             = TIM_CHANNEL_1;
+const    uint16_t          chnl_fwd_low              = TIM_CHANNEL_2;
+const    uint16_t          chnl_bwd_high             = TIM_CHANNEL_3;
+const    uint16_t          chnl_bwd_low              = TIM_CHANNEL_4;
+const    uint16_t          chnl_rc_recv              = 1;
 
 volatile uint32_t          rc_recv_in_speed          = 1500;
 volatile uint8_t           newCmd                    = 0;
