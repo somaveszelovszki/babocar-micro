@@ -53,7 +53,7 @@
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 
-TIM_HandleTypeDef  * const tim_motor                 = &htim1;
+//TIM_HandleTypeDef  * const tim_motor                 = &htim1;
 TIM_HandleTypeDef  * const tim_encoder               = &htim3;
 TIM_HandleTypeDef  * const tim_rc_recv               = &htim14;
 TIM_HandleTypeDef  * const tim_speedControllerPeriod = &htim17;
@@ -139,7 +139,6 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM3_Init();
-  MX_TIM1_Init();
   MX_TIM14_Init();
   MX_TIM16_Init();
   MX_TIM17_Init();
@@ -147,14 +146,19 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
 
-  const uint32_t PWM_MAX = 48 * 20 - 1;
+//  const uint32_t PWM_MAX = 48 * 20 - 1;
+//
+//  __HAL_TIM_SET_COMPARE(tim_motor, TIM_CHANNEL_2, PWM_MAX / 2);
 
-  __HAL_TIM_SET_COMPARE(tim_motor, TIM_CHANNEL_2, PWM_MAX / 2);
-
-  while(1) {}
+  while(1) {
+	  HAL_Delay(200);
+	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_8);
+  }
 
   typedef enum {
       Code_SAFETY_ENABLE_SIGNAL = 1,    // Defines if safety enable signal is enabled (1: enabled, 0: disabled)
