@@ -21,6 +21,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dma.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -53,25 +54,12 @@
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 
-TIM_HandleTypeDef  * const tim_motor                 = &htim1;
-TIM_HandleTypeDef  * const tim_encoder               = &htim3;
-TIM_HandleTypeDef  * const tim_rc_recv               = &htim14;
-TIM_HandleTypeDef  * const tim_speedControllerPeriod = &htim17;
-UART_HandleTypeDef * const uart_cmd                  = &huart1;
-
-const    uint16_t          chnl_fwd_high             = TIM_CHANNEL_1;
-const    uint16_t          chnl_fwd_low              = TIM_CHANNEL_2;
-const    uint16_t          chnl_bwd_high             = TIM_CHANNEL_3;
-const    uint16_t          chnl_bwd_low              = TIM_CHANNEL_4;
-const    uint16_t          chnl_rc_recv              = 1;
-
-volatile uint32_t          rc_recv_in_speed          = 1500;
-volatile uint8_t           newCmd                    = 0;
-
-volatile pi_controller_t   speedCtrl;
-volatile encoder_t         encoder;
-volatile float             speed_measured_mps        = 0.0f;
-volatile uint8_t           useSafetyEnableSignal     = 1;
+volatile uint8_t  useSafetyEnableSignal = 1;
+volatile encoder_t encoder;
+volatile uint32_t rc_recv_in_speed = 1500;
+volatile uint8_t newCmd = 0;
+volatile pi_controller_t speedCtrl;
+volatile float speed_measured_mps = 0.0f;
 
 /* USER CODE END PV */
 
@@ -81,25 +69,26 @@ void SystemClock_Config(void);
 /* Private function prototypes -----------------------------------------------*/
 
 uint8_t is_motor_enabled() {
+	uint8_t enabled = 1;
+
     if (useSafetyEnableSignal) {
         static const uint8_t ERROR_LIMIT = 3;
         static uint8_t err_cntr = 0;
 
         // copies received RC pwm atomically
-        const uint32_t primask = __get_PRIMASK();
         __disable_irq();
-        int32_t recvPwm = (int32_t)rc_recv_in_speed;
-        if (primask) __enable_irq();
+        uint32_t recvPwm = rc_recv_in_speed;
+        __enable_irq();
 
         // after a given number of errors, stops motor
         if ((recvPwm < 900 || recvPwm > 2100) && ++err_cntr >= ERROR_LIMIT) {
-            return 0;
+            enabled = 0;
+        } else {
+            enabled = (recvPwm >= 1700 ? 1 : 0);
         }
-
-        return recvPwm >= 1700 ? 1 : 0;
     }
 
-    return 1;
+    return enabled;
 }
 
 /* USER CODE END PFP */
@@ -138,6 +127,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM3_Init();
   MX_TIM1_Init();
   MX_TIM14_Init();
@@ -169,6 +159,14 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  while(1)
+  {
+	  dc_motor_write(0.2f, 0);
+	  HAL_GPIO_TogglePin(gpio_user_led, gpio_pin_user_led);
+	  HAL_Delay(500);
+  }
+
   while (1)
   {
       const uint32_t currentTime = HAL_GetTick();
@@ -302,7 +300,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (htim == tim_speedControllerPeriod) {
+	if (0 && htim == tim_speedControllerPeriod) {
 		const int32_t diff = encoder_get_diff((encoder_t*)&encoder);
 		speed_measured_mps = diff * ENCODER_TO_MPS_RATIO;
 		pi_controller_update((pi_controller_t*)&speedCtrl, speed_measured_mps);

@@ -1,11 +1,7 @@
 #include "encoder.h"
-
-#include "stm32f0xx_hal.h"
-#include "stm32f0xx_hal_tim.h"
+#include "config.h"
 
 #include <stdlib.h>
-
-extern TIM_HandleTypeDef * const tim_encoder;
 
 void encoder_initialize(encoder_t *enc, int32_t max_value) {
 	enc->prev_pos = 0;
