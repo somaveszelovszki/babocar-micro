@@ -54,12 +54,17 @@
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 
-volatile uint8_t  useSafetyEnableSignal = 1;
-volatile encoder_t encoder;
-volatile uint32_t rc_recv_in_speed = 1500;
-volatile uint8_t newCmd = 0;
-volatile pi_controller_t speedCtrl;
-volatile float speed_measured_mps = 0.0f;
+static volatile uint8_t isMotorEnabled = 0;
+static volatile uint8_t useSafetyEnableSignal = 1;
+static volatile encoder_t encoder;
+static volatile uint32_t rc_recv_in_speed = 1500;
+static volatile uint8_t newCmd = 0;
+static volatile pi_controller_t speedCtrl;
+static volatile float speed_measured_mps = 0.0f;
+
+static uint8_t ACK_template[TX_SIZE] = { 0 };
+
+static uint8_t rxBuffer[RX_SIZE], txBuffer[TX_SIZE];
 
 /* USER CODE END PV */
 
@@ -68,12 +73,14 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 
-uint8_t is_motor_enabled() {
-	uint8_t enabled = 1;
+void update_motor_enabled(void) {
+
+    static const uint8_t ERROR_LIMIT = 3;
+    static uint8_t err_cntr = 0;
+
+    uint8_t enabled = 1;
 
     if (useSafetyEnableSignal) {
-        static const uint8_t ERROR_LIMIT = 3;
-        static uint8_t err_cntr = 0;
 
         // copies received RC pwm atomically
         __disable_irq();
@@ -86,9 +93,23 @@ uint8_t is_motor_enabled() {
         } else {
             enabled = (recvPwm >= 1700 ? 1 : 0);
         }
+    } else
+    {
+        enabled = 1;
     }
 
-    return enabled;
+    __disable_irq();
+    isMotorEnabled = enabled;
+    __enable_irq();
+}
+
+void send_speed(void) {
+    __disable_irq();
+    *(float*)txBuffer = speed_measured_mps;
+    __enable_irq();
+
+    // transmits actual (measured) speed back to main panel
+    HAL_UART_Transmit_DMA(uart_cmd, txBuffer, 4);
 }
 
 /* USER CODE END PFP */
@@ -138,34 +159,30 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   typedef enum {
-      Code_SAFETY_ENABLE_SIGNAL = 1,    // Defines if safety enable signal is enabled (1: enabled, 0: disabled)
-      Code_TARGET_SPEED         = 2,    // Sets target speed
-      Code_PI_CONTROLLER_Ti     = 3,    // Sets speed controller's Ti [us]
-      Code_PI_CONTROLLER_Kc     = 4     // Sets speed controller's Kc
-  } Code;
+      CtrlCode_SAFETY_ENABLE_SIGNAL = 1,    // Defines if safety enable signal is enabled (1: enabled, 0: disabled)
+      CtrlCode_TARGET_SPEED         = 2,    // Sets target speed
+      CtrlCode_PI_CONTROLLER_Ti     = 3,    // Sets speed controller's Ti [us]
+      CtrlCode_PI_CONTROLLER_Kc     = 4     // Sets speed controller's Kc
+  } CtrlCode;
 
-  uint8_t ACK_template[TX_SIZE] = { 0, 0, 0, 0, 0 };
-
-  uint8_t rxBuffer[RX_SIZE], txBuffer[TX_SIZE];
   HAL_UART_Receive_DMA(uart_cmd, rxBuffer, RX_SIZE);
 
   dc_motor_initialize();
   encoder_initialize((encoder_t*)&encoder, ENCODER_MAX_VALUE);
   pi_controller_initialize((pi_controller_t*)&speedCtrl, SPEED_CTRL_PERIOD_US, SPEED_CTRL_Ti_us, SPEED_CTRL_Kc, SPEED_CTRL_DEADBAND_MPS, -SPEED_CTRL_OUT_MAX, SPEED_CTRL_OUT_MAX);
 
-  uint32_t lastCmdTime = HAL_GetTick();
-  uint32_t lastSpeedSendTime = HAL_GetTick();
+  uint32_t lastCmdTime               = HAL_GetTick();
+  uint32_t lastSafetySignalCheckTime = HAL_GetTick();
+  uint32_t lastSpeedSendTime         = HAL_GetTick();
+  uint32_t lastLedToggleTime         = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  while(1)
-  {
-	  dc_motor_write(0.2f, 0);
-	  HAL_GPIO_TogglePin(gpio_user_led, gpio_pin_user_led);
-	  HAL_Delay(500);
-  }
+  // TODO handle handshake
+
+  speedCtrl.desired = -1.0f;
 
   while (1)
   {
@@ -174,36 +191,31 @@ int main(void)
           newCmd = 0;
           lastCmdTime = currentTime;
 
-          const Code code = (Code)rxBuffer[0];
+          const CtrlCode code = (CtrlCode)rxBuffer[0];
 
           switch (code) {
 
-          case Code_SAFETY_ENABLE_SIGNAL:
+          case CtrlCode_SAFETY_ENABLE_SIGNAL:
+              __disable_irq();
               useSafetyEnableSignal = rxBuffer[1];
+              __enable_irq();
               break;
 
-          case Code_TARGET_SPEED:
+          case CtrlCode_TARGET_SPEED:
           {
-              if (is_motor_enabled()) {
-                  __disable_irq();
-                  speedCtrl.desired = *(float*)(&rxBuffer[1]);
-                  __enable_irq();
-              } else {
-                  __disable_irq();
-                  speedCtrl.desired = 0.0f;
-                  __enable_irq();
-              }
-
+              __disable_irq();
+              speedCtrl.desired = *(float*)(&rxBuffer[1]);
+              __enable_irq();
               break;
           }
 
-          case Code_PI_CONTROLLER_Ti:
+          case CtrlCode_PI_CONTROLLER_Ti:
               __disable_irq();
               pi_controller_set_Ti((pi_controller_t*)&speedCtrl, *(uint32_t*)(&rxBuffer[1]));
               __enable_irq();
               break;
 
-          case Code_PI_CONTROLLER_Kc:
+          case CtrlCode_PI_CONTROLLER_Kc:
               __disable_irq();
               pi_controller_set_Ti((pi_controller_t*)&speedCtrl, *(float*)(&rxBuffer[1]));
               __enable_irq();
@@ -216,19 +228,23 @@ int main(void)
 
       if (currentTime - lastCmdTime > MAX_CMD_DELAY_MS) {
           __disable_irq();
-          speedCtrl.desired = 0.0f;
+          //speedCtrl.desired = 0.0f;
           __enable_irq();
       }
 
       if (currentTime >= lastSpeedSendTime + SPEED_SEND_PERIOD_MS) {
     	  lastSpeedSendTime = currentTime;
+    	  // TODO send_speed();
+      }
 
-    	  __disable_irq();
-    	  *(float*)txBuffer = speed_measured_mps;
-    	  __enable_irq();
+      if (currentTime >= lastSafetySignalCheckTime + SAFETY_SIGNAL_CHECK_PERIOD_MS) {
+          lastSafetySignalCheckTime = currentTime;
+          update_motor_enabled();
+      }
 
-          // transmits actual (measured) speed back to main panel
-          HAL_UART_Transmit_DMA(uart_cmd, txBuffer, 4);
+      if (currentTime >= lastLedToggleTime + 500) {
+          lastLedToggleTime = currentTime;
+          HAL_GPIO_TogglePin(gpio_user_led, gpio_pin_user_led);
       }
 
     /* USER CODE END WHILE */
@@ -300,11 +316,20 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (0 && htim == tim_speedControllerPeriod) {
+	if (htim == tim_speedControllerPeriod) {
+
 		const int32_t diff = encoder_get_diff((encoder_t*)&encoder);
 		speed_measured_mps = diff * ENCODER_TO_MPS_RATIO;
-		pi_controller_update((pi_controller_t*)&speedCtrl, speed_measured_mps);
-		dc_motor_write(speedCtrl.output, useSafetyEnableSignal);
+
+        dc_motor_write(speedCtrl.desired);
+
+//		if (isMotorEnabled)
+//		{
+//	        pi_controller_update((pi_controller_t*)&speedCtrl, speed_measured_mps);
+//	        dc_motor_write(speedCtrl.output);
+//		} else {
+//		    dc_motor_write(0.0f);
+//		}
 	}
 }
 

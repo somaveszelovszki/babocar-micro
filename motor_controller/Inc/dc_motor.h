@@ -5,6 +5,6 @@
 
 void dc_motor_initialize();
 
-void dc_motor_write(float duty, uint8_t use_safety_enable_signal);
+void dc_motor_write(float duty);
 
 #endif /* DC_MOTOR_H_ */

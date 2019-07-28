@@ -10,10 +10,10 @@
 #define PWM_MIN chnl2_pwm(PWM_MAX)
 
 void dc_motor_initialize() {
-	dc_motor_write(0.0f, 0);
+	dc_motor_write(0.0f);
 }
 
-void dc_motor_write(float duty, uint8_t use_safety_enable_signal) {
+void dc_motor_write(float duty) {
 
     const int32_t pwm1 = map_float_to_int(duty, -1.0f, 1.0f, PWM_MIN, PWM_MAX);
     const int32_t pwm2 = chnl2_pwm(pwm1);
