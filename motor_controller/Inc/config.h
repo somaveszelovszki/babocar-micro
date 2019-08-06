@@ -32,7 +32,7 @@
 #define chnl_bridge_1_high   TIM_CHANNEL_3
 #define chnl_bridge_1_low    TIM_CHANNEL_4
 #define motor_PWM_PERIOD     (48 * 20)
-#define motor_DEAD_TIME_TICK 20
+#define motor_DEAD_TIME_TICK 24
 
 #define tim_encoder (&htim3)
 
