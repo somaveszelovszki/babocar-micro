@@ -157,6 +157,7 @@ void MX_TIM14_Init(void)
   {
     Error_Handler();
   }
+  HAL_TIM_MspPostInit(&htim14);
 
 }
 /* TIM16 init function */
@@ -313,7 +314,7 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* TIM14 interrupt Init */
-    HAL_NVIC_SetPriority(TIM14_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(TIM14_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(TIM14_IRQn);
   /* USER CODE BEGIN TIM14_MspInit 1 */
     HAL_TIM_Base_Start_IT(&htim14);
@@ -390,6 +391,11 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* timHandle)
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+  }
+
+  if(timHandle->Instance==TIM14)
+  {
+    HAL_TIM_IC_Start_IT(&htim14, TIM_CHANNEL_1);
   /* USER CODE END TIM1_MspPostInit 1 */
   }
 

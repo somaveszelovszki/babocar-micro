@@ -84,7 +84,7 @@ void update_motor_enabled(void) {
 
         // copies received RC pwm atomically
         __disable_irq();
-        uint32_t recvPwm = rc_recv_in_speed;
+        const uint32_t recvPwm = rc_recv_in_speed;
         __enable_irq();
 
         // after a given number of errors, stops motor
@@ -93,9 +93,6 @@ void update_motor_enabled(void) {
         } else {
             enabled = (recvPwm >= 1700 ? 1 : 0);
         }
-    } else
-    {
-        enabled = 1;
     }
 
     __disable_irq();
@@ -169,7 +166,7 @@ int main(void)
 
   dc_motor_initialize();
   encoder_initialize((encoder_t*)&encoder, ENCODER_MAX_VALUE);
-  pi_controller_initialize((pi_controller_t*)&speedCtrl, SPEED_CTRL_PERIOD_US, SPEED_CTRL_Ti_us, SPEED_CTRL_Kc, SPEED_CTRL_DEADBAND_MPS, -SPEED_CTRL_OUT_MAX, SPEED_CTRL_OUT_MAX);
+  pi_controller_initialize((pi_controller_t*)&speedCtrl, SPEED_CTRL_PERIOD_US, SPEED_CTRL_Ti_US, SPEED_CTRL_Kc, SPEED_CTRL_DEADBAND_MPS, -1.0f, 1.0f);
 
   uint32_t lastCmdTime               = HAL_GetTick();
   uint32_t lastSafetySignalCheckTime = HAL_GetTick();
@@ -182,10 +179,20 @@ int main(void)
 
   // TODO handle handshake
 
-  speedCtrl.desired = -1.0f;
+  speedCtrl.desired = 0.5f;
 
   while (1)
   {
+      // TODO
+//      __disable_irq();
+//      volatile int32_t recvPwm = (int32_t)rc_recv_in_speed;
+//      __enable_irq();
+//
+//      // after a given number of errors, stops motor
+//      if (recvPwm > 900 && recvPwm < 2100) {
+//          speedCtrl.desired = map(recvPwm, 1000, 2000, -1.0f, 1.0f);
+//      }
+
       const uint32_t currentTime = HAL_GetTick();
       if (newCmd) {
           newCmd = 0;
@@ -321,15 +328,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		const int32_t diff = encoder_get_diff((encoder_t*)&encoder);
 		speed_measured_mps = diff * ENCODER_TO_MPS_RATIO;
 
-        dc_motor_write(speedCtrl.desired);
-
-//		if (isMotorEnabled)
-//		{
-//	        pi_controller_update((pi_controller_t*)&speedCtrl, speed_measured_mps);
-//	        dc_motor_write(speedCtrl.output);
-//		} else {
-//		    dc_motor_write(0.0f);
-//		}
+		if (isMotorEnabled || 1)
+		{
+	        pi_controller_update((pi_controller_t*)&speedCtrl, speed_measured_mps);
+	        //dc_motor_write(speedCtrl.output);
+	        dc_motor_write(speedCtrl.desired);
+		} else {
+		    dc_motor_write(0.0f);
+		}
 	}
 }
 

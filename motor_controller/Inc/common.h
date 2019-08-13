@@ -3,14 +3,17 @@
 
 #include <stdint.h>
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 int32_t round_to_int(float value);
 
-int32_t clamp(int32_t value, int32_t min_val, int32_t max_val);
+#define clamp(value, bound1, bound2)    \
+((bound1) <= (bound2) ?                 \
+max(min((value), (bound2)), (bound1)) : \
+min(max((value), (bound2)), (bound1)))
 
-float clampf(float value, float min_val, float max_val);
-
-int32_t map_int_to_int(int32_t value, int32_t from_low, int32_t from_high, int32_t to_low, int32_t to_high);
-
-int32_t map_float_to_int(float value, float from_low, float from_high, int32_t to_low, int32_t to_high);
+#define map(value, from_low, from_high, to_low, to_high) \
+((to_low) + (clamp((value), (from_low), (from_high)) - (from_low)) * ((to_high) - (to_low)) / ((from_high) - (from_low)))
 
 #endif /* COMMON_H_ */
