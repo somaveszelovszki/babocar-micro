@@ -8,14 +8,15 @@ static void update_coeffs(pi_controller_t *pi) {
 }
 
 
-void pi_controller_initialize(pi_controller_t *pi, uint32_t period_us, uint32_t Ti_us, float Kc, float deadband, float out_min, float out_max) {
+void pi_controller_initialize(pi_controller_t *pi, uint32_t period_us, uint32_t Ti_us, float Kc, float deadband, float out_min, float out_max, float max_delta) {
     pi->period_us = period_us;
-    pi->Ti_us = Ti_us;
-    pi->Kc = Kc;
-    pi->deadband = deadband;
-    pi->out_min = out_min;
-    pi->out_max = out_max;
-    pi->desired = pi->output = pi->ek1 = 0.0f;
+    pi->Ti_us     = Ti_us;
+    pi->Kc        = Kc;
+    pi->deadband  = deadband;
+    pi->out_min   = out_min;
+    pi->out_max   = out_max;
+    pi->max_delta = max_delta;
+    pi->desired   = pi->output = pi->ek1 = 0.0f;
 
     update_coeffs(pi);
 }
@@ -36,6 +37,9 @@ void pi_controller_update(pi_controller_t *pi, float measured) {
 	    pi->ek1 = 0.0f;
 	} else {
         const float ek = pi->desired - measured;
-        pi->output += clamp(pi->b0 * ek + pi->b1 * pi->ek1, pi->out_min, pi->out_max);
+        const float prev_out = pi->output;
+        pi->output += pi->b0 * ek + pi->b1 * pi->ek1;
+        pi->output = clamp(pi->output, prev_out - pi->max_delta, prev_out + pi->max_delta);
+        pi->output = clamp(pi->output, pi->out_min, pi->out_max);
 	}
 }
