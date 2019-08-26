@@ -179,19 +179,19 @@ int main(void)
 
   // TODO handle handshake
 
-  speedCtrl.desired = 0.5f;
+  speedCtrl.desired = 0.0f;
 
   while (1)
   {
       // TODO
-//      __disable_irq();
-//      volatile int32_t recvPwm = (int32_t)rc_recv_in_speed;
-//      __enable_irq();
-//
-//      // after a given number of errors, stops motor
-//      if (recvPwm > 900 && recvPwm < 2100) {
-//          speedCtrl.desired = map(recvPwm, 1000, 2000, -1.0f, 1.0f);
-//      }
+      __disable_irq();
+      volatile int32_t recvPwm = (int32_t)rc_recv_in_speed;
+      __enable_irq();
+
+      // after a given number of errors, stops motor
+      if (recvPwm > 900 && recvPwm < 2100) {
+          speedCtrl.desired = map(recvPwm, 1000, 2000, -1.0f, 1.0f);
+      }
 
       const uint32_t currentTime = HAL_GetTick();
       if (newCmd) {
