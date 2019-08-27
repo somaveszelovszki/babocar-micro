@@ -1,3 +1,6 @@
 [submodule "modules/micro-utils"]
 	path = modules/micro-utils
 	url = git@github.com:somaveszelovszki/micro-utils.git
+[submodule "modules/car-stm32"]
+	path = modules/car-stm32
+	url = git@github.com:somaveszelovszki/car-stm32.git
