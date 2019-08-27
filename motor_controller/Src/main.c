@@ -166,7 +166,7 @@ int main(void)
 
   dc_motor_initialize();
   encoder_initialize((encoder_t*)&encoder, ENCODER_MAX_VALUE);
-  pi_controller_initialize((pi_controller_t*)&speedCtrl, SPEED_CTRL_PERIOD_US, SPEED_CTRL_Ti_US, SPEED_CTRL_Kc, SPEED_CTRL_DEADBAND_MPS, -1.0f, 1.0f);
+  pi_controller_initialize((pi_controller_t*)&speedCtrl, SPEED_CTRL_PERIOD_US, SPEED_CTRL_Ti_US, SPEED_CTRL_Kc, SPEED_CTRL_DEADBAND_MPS, -1.0f, 1.0f, SPEED_CTRL_MAX_DELTA);
 
   uint32_t lastCmdTime               = HAL_GetTick();
   uint32_t lastSafetySignalCheckTime = HAL_GetTick();

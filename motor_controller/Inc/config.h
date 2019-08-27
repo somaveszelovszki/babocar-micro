@@ -7,6 +7,7 @@
 #define SPEED_CTRL_PERIOD_US          500u    // TODO [us]
 #define SPEED_CTRL_Ti_US              500u    // TODO [us]
 #define SPEED_CTRL_Kc                 0.0f    // TODO
+#define SPEED_CTRL_MAX_DELTA          0.1f
 #define SPEED_CTRL_DEADBAND_MPS       0.005f  // If measured speed is less than this value [m/s], speed controller output will be zero
 
 #define ENCODER_MAX_VALUE             65536
