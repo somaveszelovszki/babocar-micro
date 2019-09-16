@@ -1,4 +1,5 @@
 #include "pi_controller.h"
+#include "common.h"
 
 #include <stdlib.h>
 

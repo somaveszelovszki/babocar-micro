@@ -1,7 +1,7 @@
 #ifndef ENCODER_H_
 #define ENCODER_H_
 
-#include "common.h"
+#include <micro/utils/types.h>
 
 typedef struct {
 	int32_t prev_pos;

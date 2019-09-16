@@ -14,12 +14,9 @@
 #define ENCODER_TO_MPS_RATIO          1.0f  // TODO
 #define MAX_CMD_DELAY_MS              50u   // If no command is received for this amount of time, motor needs to be stopped
 
-#define SAFETY_SIGNAL_CHECK_PERIOD_MS 1u    // Period of safety signal checking
+#define SAFETY_SIGNAL_CHECK_PERIOD_MS 10u   // Period of safety signal checking
 
 #define SPEED_SEND_PERIOD_MS          10u   // Period of speed sending
-
-#define RX_SIZE                       5     // RX message buffer size
-#define TX_SIZE                       5     // TX message buffer size
 
 #define uart_cmd (&huart1)
 

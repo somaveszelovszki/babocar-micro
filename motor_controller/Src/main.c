@@ -29,9 +29,12 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "config.h"
+#include "common.h"
 #include "pi_controller.h"
 #include "encoder.h"
 #include "dc_motor.h"
+
+#include <micro/panel/MotorPanelData.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,17 +57,16 @@
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 
-static volatile uint8_t isMotorEnabled = 0;
-static volatile uint8_t useSafetyEnableSignal = 1;
+static volatile bool isMotorEnabled = false;
+static volatile bool useSafetyEnableSignal = true;
 static volatile encoder_t encoder;
 static volatile uint32_t rc_recv_in_speed = 1500;
-static volatile uint8_t newCmd = 0;
+static volatile bool newCmd = false;
 static volatile pi_controller_t speedCtrl;
 static volatile float speed_measured_mps = 0.0f;
 
-static uint8_t ACK_template[TX_SIZE] = { 0 };
-
-static uint8_t rxBuffer[RX_SIZE], txBuffer[TX_SIZE];
+motorPanelDataIn_t inData;
+motorPanelDataOut_t outData;
 
 /* USER CODE END PV */
 
@@ -78,7 +80,7 @@ void update_motor_enabled(void) {
     static const uint8_t ERROR_LIMIT = 3;
     static uint8_t err_cntr = 0;
 
-    uint8_t enabled = 1;
+    bool enabled = true;
 
     if (useSafetyEnableSignal) {
 
@@ -89,9 +91,10 @@ void update_motor_enabled(void) {
 
         // after a given number of errors, stops motor
         if ((recvPwm < 900 || recvPwm > 2100) && ++err_cntr >= ERROR_LIMIT) {
-            enabled = 0;
+            enabled = false;
         } else {
-            enabled = (recvPwm >= 1700 ? 1 : 0);
+            err_cntr = 0;
+            enabled = (recvPwm >= 1700);
         }
     }
 
@@ -102,11 +105,21 @@ void update_motor_enabled(void) {
 
 void send_speed(void) {
     __disable_irq();
-    *(float*)txBuffer = speed_measured_mps;
+    outData.actualSpeed_mmps = (int16_t)(speed_measured_mps * 1000);
     __enable_irq();
 
     // transmits actual (measured) speed back to main panel
-    HAL_UART_Transmit_DMA(uart_cmd, txBuffer, 4);
+    HAL_UART_Transmit_DMA(uart_cmd, (uint8_t*)&outData, sizeof(motorPanelDataOut_t));
+}
+
+void handle_cmd(void) {
+
+    __disable_irq();
+    speedCtrl.desired = inData.targetSpeed_mmps / 1000.0f;
+    pi_controller_set_Ti((pi_controller_t*)&speedCtrl, inData.controller_Ti_us);
+    pi_controller_set_Kc((pi_controller_t*)&speedCtrl, inData.controller_Kc);
+    useSafetyEnableSignal = !!(inData.flags & FLAG_USE_SAFETY_SIGNAL);
+    __enable_irq();
 }
 
 /* USER CODE END PFP */
@@ -155,14 +168,7 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  typedef enum {
-      CtrlCode_SAFETY_ENABLE_SIGNAL = 1,    // Defines if safety enable signal is enabled (1: enabled, 0: disabled)
-      CtrlCode_TARGET_SPEED         = 2,    // Sets target speed
-      CtrlCode_PI_CONTROLLER_Ti     = 3,    // Sets speed controller's Ti [us]
-      CtrlCode_PI_CONTROLLER_Kc     = 4     // Sets speed controller's Kc
-  } CtrlCode;
-
-  HAL_UART_Receive_DMA(uart_cmd, rxBuffer, RX_SIZE);
+  HAL_UART_Receive_DMA(uart_cmd, (uint8_t*)&inData, sizeof(motorPanelDataIn_t));
 
   dc_motor_initialize();
   encoder_initialize((encoder_t*)&encoder, ENCODER_MAX_VALUE);
@@ -177,60 +183,27 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  // TODO handle handshake
-
   speedCtrl.desired = 0.0f;
 
   while (1)
   {
       // TODO
-      __disable_irq();
-      volatile int32_t recvPwm = (int32_t)rc_recv_in_speed;
-      __enable_irq();
+      {
+          __disable_irq();
+          volatile int32_t recvPwm = (int32_t)rc_recv_in_speed;
+          __enable_irq();
 
-      // after a given number of errors, stops motor
-      if (recvPwm > 900 && recvPwm < 2100) {
-          speedCtrl.desired = map(recvPwm, 1000, 2000, -1.0f, 1.0f);
+          // after a given number of errors, stops motor
+          if (recvPwm > 900 && recvPwm < 2100) {
+              speedCtrl.desired = map(recvPwm, 1000, 2000, -1.0f, 1.0f);
+          }
       }
 
       const uint32_t currentTime = HAL_GetTick();
       if (newCmd) {
-          newCmd = 0;
+          newCmd = false;
           lastCmdTime = currentTime;
-
-          const CtrlCode code = (CtrlCode)rxBuffer[0];
-
-          switch (code) {
-
-          case CtrlCode_SAFETY_ENABLE_SIGNAL:
-              __disable_irq();
-              useSafetyEnableSignal = rxBuffer[1];
-              __enable_irq();
-              break;
-
-          case CtrlCode_TARGET_SPEED:
-          {
-              __disable_irq();
-              speedCtrl.desired = *(float*)(&rxBuffer[1]);
-              __enable_irq();
-              break;
-          }
-
-          case CtrlCode_PI_CONTROLLER_Ti:
-              __disable_irq();
-              pi_controller_set_Ti((pi_controller_t*)&speedCtrl, *(uint32_t*)(&rxBuffer[1]));
-              __enable_irq();
-              break;
-
-          case CtrlCode_PI_CONTROLLER_Kc:
-              __disable_irq();
-              pi_controller_set_Ti((pi_controller_t*)&speedCtrl, *(float*)(&rxBuffer[1]));
-              __enable_irq();
-              break;
-          }
-
-          ACK_template[0] = (uint8_t)code;
-          HAL_UART_Transmit_DMA(uart_cmd, ACK_template, TX_SIZE);
+          handle_cmd();
       }
 
       if (currentTime - lastCmdTime > MAX_CMD_DELAY_MS) {
@@ -241,7 +214,7 @@ int main(void)
 
       if (currentTime >= lastSpeedSendTime + SPEED_SEND_PERIOD_MS) {
     	  lastSpeedSendTime = currentTime;
-    	  // TODO send_speed();
+    	  send_speed();
       }
 
       if (currentTime >= lastSafetySignalCheckTime + SAFETY_SIGNAL_CHECK_PERIOD_MS) {
@@ -318,7 +291,7 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart == uart_cmd) {
-        newCmd = 1;
+        newCmd = true;
     }
 }
 

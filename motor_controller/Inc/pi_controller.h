@@ -1,7 +1,7 @@
 #ifndef PI_CONTROLLER_H_
 #define PI_CONTROLLER_H_
 
-#include "common.h"
+#include <micro/utils/types.h>
 
 typedef struct {
     uint32_t period_us;

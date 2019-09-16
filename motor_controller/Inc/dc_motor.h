@@ -1,7 +1,7 @@
 #ifndef DC_MOTOR_H_
 #define DC_MOTOR_H_
 
-#include "common.h"
+#include <micro/utils/types.h>
 
 void dc_motor_initialize();
 
