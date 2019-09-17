@@ -155,7 +155,6 @@ void MX_TIM14_Init(void)
   {
     Error_Handler();
   }
-  HAL_TIM_MspPostInit(&htim14);
 
 }
 /* TIM16 init function */
