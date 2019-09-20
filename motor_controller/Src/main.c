@@ -118,7 +118,7 @@ void handle_cmd(void) {
     speedCtrl.desired = inData.targetSpeed_mmps / 1000.0f;
     pi_controller_set_Ti((pi_controller_t*)&speedCtrl, inData.controller_Ti_us);
     pi_controller_set_Kc((pi_controller_t*)&speedCtrl, inData.controller_Kc);
-    useSafetyEnableSignal = !!(inData.flags & FLAG_USE_SAFETY_SIGNAL);
+    useSafetyEnableSignal = !!(inData.flags & MOTOR_PANEL_FLAG_USE_SAFETY_SIGNAL);
     __enable_irq();
 }
 
