@@ -34,6 +34,8 @@
 #include "encoder.h"
 #include "dc_motor.h"
 
+#include <micro/utils/types.h>
+
 #include <micro/panel/MotorPanelData.h>
 /* USER CODE END Includes */
 

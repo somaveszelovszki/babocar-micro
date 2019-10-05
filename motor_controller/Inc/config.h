@@ -1,9 +1,6 @@
 #ifndef CONFIG_H_
 #define CONFIG_H_
 
-#include "tim.h"
-#include "usart.h"
-
 #define SPEED_CTRL_PERIOD_US          500u    // TODO [us]
 #define SPEED_CTRL_Ti_US              500u    // TODO [us]
 #define SPEED_CTRL_Kc                 0.0f    // TODO
