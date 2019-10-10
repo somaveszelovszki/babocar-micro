@@ -79,36 +79,27 @@ void SystemClock_Config(void);
 
 void update_motor_enabled(void) {
 
-    static const uint8_t ERROR_LIMIT = 3;
-    static uint8_t err_cntr = 0;
+    static const uint8_t BOUNCE_LIMIT = 3;
+    static uint8_t bounce_cntr = 0;
 
     bool enabled = true;
 
     if (useSafetyEnableSignal) {
+        uint32_t recvPwm = rc_recv_in_speed;
+        const bool en = (recvPwm > 1700 && recvPwm < 2100);
 
-        // copies received RC pwm atomically
-        __disable_irq();
-        const uint32_t recvPwm = rc_recv_in_speed;
-        __enable_irq();
-
-        // after a given number of errors, stops motor
-        if ((recvPwm < 900 || recvPwm > 2100) && ++err_cntr >= ERROR_LIMIT) {
-            enabled = false;
+        if (en != isMotorEnabled && ++bounce_cntr > BOUNCE_LIMIT) {
+            enabled = en;
         } else {
-            err_cntr = 0;
-            enabled = (recvPwm >= 1700);
+            bounce_cntr = 0;
         }
     }
 
-    __disable_irq();
     isMotorEnabled = enabled;
-    __enable_irq();
 }
 
 void send_speed(void) {
-    __disable_irq();
     outData.actualSpeed_mmps = (int16_t)(speed_measured_mps * 1000);
-    __enable_irq();
 
     // transmits actual (measured) speed back to main panel
     HAL_UART_Transmit_DMA(uart_cmd, (uint8_t*)&outData, sizeof(motorPanelDataOut_t));
@@ -116,12 +107,12 @@ void send_speed(void) {
 
 void handle_cmd(void) {
 
-    __disable_irq();
     speedCtrl.desired = inData.targetSpeed_mmps / 1000.0f;
+    __disable_irq();
     pi_controller_set_Ti((pi_controller_t*)&speedCtrl, inData.controller_Ti_us);
     pi_controller_set_Kc((pi_controller_t*)&speedCtrl, inData.controller_Kc);
-    useSafetyEnableSignal = !!(inData.flags & MOTOR_PANEL_FLAG_USE_SAFETY_SIGNAL);
     __enable_irq();
+    useSafetyEnableSignal = !!(inData.flags & MOTOR_PANEL_FLAG_USE_SAFETY_SIGNAL);
 }
 
 /* USER CODE END PFP */
@@ -191,9 +182,7 @@ int main(void)
   {
       // TODO
       {
-          __disable_irq();
           volatile int32_t recvPwm = (int32_t)rc_recv_in_speed;
-          __enable_irq();
 
           // after a given number of errors, stops motor
           if (recvPwm > 900 && recvPwm < 2100) {
@@ -209,9 +198,9 @@ int main(void)
       }
 
       if (currentTime - lastCmdTime > MAX_CMD_DELAY_MS) {
-          __disable_irq();
+          //__disable_irq();
           //speedCtrl.desired = 0.0f;
-          __enable_irq();
+          //__enable_irq();
       }
 
       if (currentTime >= lastSpeedSendTime + SPEED_SEND_PERIOD_MS) {
