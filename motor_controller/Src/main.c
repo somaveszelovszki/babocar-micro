@@ -161,13 +161,15 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  bool initialized = false;
+
   HAL_UART_Receive_DMA(uart_cmd, (uint8_t*)&inData, sizeof(motorPanelDataIn_t));
 
   dc_motor_initialize();
   encoder_initialize((encoder_t*)&encoder, ENCODER_MAX_VALUE);
   pi_controller_initialize((pi_controller_t*)&speedCtrl, SPEED_CTRL_PERIOD_US, SPEED_CTRL_Ti_US, SPEED_CTRL_Kc, SPEED_CTRL_DEADBAND_MPS, -1.0f, 1.0f, SPEED_CTRL_MAX_DELTA);
 
-  uint32_t lastCmdTime               = HAL_GetTick();
+  uint32_t lastCmdTime               = 0;
   uint32_t lastSafetySignalCheckTime = HAL_GetTick();
   uint32_t lastSpeedSendTime         = HAL_GetTick();
   uint32_t lastLedToggleTime         = HAL_GetTick();
@@ -193,24 +195,27 @@ int main(void)
       const uint32_t currentTime = HAL_GetTick();
       if (newCmd) {
           newCmd = false;
+          initialized = true;
           lastCmdTime = currentTime;
           handle_cmd();
       }
 
-      if (currentTime - lastCmdTime > MAX_CMD_DELAY_MS) {
-          //__disable_irq();
-          //speedCtrl.desired = 0.0f;
-          //__enable_irq();
-      }
+      if (initialized) {
+          if (currentTime - lastCmdTime > MAX_CMD_DELAY_MS) {
+              //__disable_irq();
+              //speedCtrl.desired = 0.0f;
+              //__enable_irq();
+          }
 
-      if (currentTime >= lastSpeedSendTime + SPEED_SEND_PERIOD_MS) {
-    	  lastSpeedSendTime = currentTime;
-    	  send_speed();
-      }
+          if (currentTime >= lastSpeedSendTime + SPEED_SEND_PERIOD_MS) {
+              lastSpeedSendTime = currentTime;
+              send_speed();
+          }
 
-      if (currentTime >= lastSafetySignalCheckTime + SAFETY_SIGNAL_CHECK_PERIOD_MS) {
-          lastSafetySignalCheckTime = currentTime;
-          update_motor_enabled();
+          if (currentTime >= lastSafetySignalCheckTime + SAFETY_SIGNAL_CHECK_PERIOD_MS) {
+              lastSafetySignalCheckTime = currentTime;
+              update_motor_enabled();
+          }
       }
 
       if (currentTime >= lastLedToggleTime + 500) {
