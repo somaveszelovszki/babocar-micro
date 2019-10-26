@@ -15,19 +15,34 @@
 
 #define SPEED_SEND_PERIOD_MS          10u   // Period of speed sending
 
+#define FACTORY_MOTOR_CONTROLLER 1
+
 #define uart_cmd (&huart1)
 
 #define gpio_user_led     GPIOB
 #define gpio_pin_user_led GPIO_PIN_5
 
 #define tim_motor            (&htim1)
+
+#if FACTORY_MOTOR_CONTROLLER
+
+#define chnl_motor           TIM_CHANNEL_1
+#define motor_PWM_PERIOD     20000
+#define motor_PWM_STOP       1500
+#define motor_HARD_MAX       1750
+#define motor_HARD_MIN       1200
+
+#else
+
 #define chnl_bridge_1_high   TIM_CHANNEL_3
 #define chnl_bridge_1_low    TIM_CHANNEL_4
 #define chnl_bridge_2_high   TIM_CHANNEL_2
 #define chnl_bridge_2_low    TIM_CHANNEL_1
 #define motor_PWM_PERIOD     (48 * 20)
-#define motor_DEAD_TIME_TICK 24
 #define motor_HARD_MAX       ((int32_t)(motor_PWM_PERIOD * 0.75f))
+#define motor_DEAD_TIME_TICK 24
+
+#endif // FACTORY_MOTOR_CONTROLLER
 
 #define tim_encoder (&htim3)
 
