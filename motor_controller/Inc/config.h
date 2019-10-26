@@ -27,7 +27,7 @@
 #define chnl_bridge_2_low    TIM_CHANNEL_1
 #define motor_PWM_PERIOD     (48 * 20)
 #define motor_DEAD_TIME_TICK 24
-#define motor_HARD_MAX       ((int32_t)(motor_PWM_PERIOD * 0.90f))
+#define motor_HARD_MAX       ((int32_t)(motor_PWM_PERIOD * 0.75f))
 
 #define tim_encoder (&htim3)
 
