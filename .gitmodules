@@ -4,3 +4,6 @@
 [submodule "modules/car-stm32"]
 	path = modules/car-stm32
 	url = git@github.com:somaveszelovszki/car-stm32.git
+[submodule "motor-controller"]
+	path = motor-controller
+	url = git@github.com:somaveszelovszki/motor-controller.git
